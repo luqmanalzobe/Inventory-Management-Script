@@ -1,1 +1,11 @@
 # Inventory-Management-Script
+
+During my time at Phoenix Manufacturing I noticed some systems were very outdated. For example, the company would produce extra molds and we had a stock room where they would keep all of the extra molds they made. The system in place was a manual system, where you would cross off a list if you took out molds and you would have to manually add molds onto a piece of paper. It was very slow, and could get messy and sometimes hard to read with different people's handwritings. 
+
+My first idea was to simply digitalize this and move it onto an excel sheet, where you can CTRL + F the sheet to find whatever you needed however a new problem appeared. Different molds used different abbreviations and sometimes you would search a mold and it wouldn't come up becuase you had used a different abbreviation. For example, a mold can be written as PML-6411, PML 6411, or PML.6411. If you didn't search all 3 you had a chance of missing the mold.
+
+So I came up with a program in python to make this process a lot easier and faster. It's simply an inventory management script that reads the excel sheet in the same file as it, and then you have a live view of the sheet within the program. You can add molds by being in add mode, typing in the mold name and then adding the quantity and the box #. This will add it onto the excel sheet and also update it in the live viewer. To fix the abbreviation issue, I made the program remove any dashes, spaces, underscores, or periods. This allows for 1 normal standard of adding molds to the list so that no matter who adds them and their style of adding them, all the molds can easily be tracked.
+
+To remove a mold from the sheet after retrieving it from the stock room, simply go into remove mode and then you can either click the mold directly from the live viewer, or type it into the box and the qunatity and the box number and remove it there.
+
+This script made managing the stock room way easier and faster. It allows for all employees to easily go into the system, open the program, search up all the molds they need and the box number, and then delete it very fast. It also allows for fast addition of molds to the list if we make more extra.
