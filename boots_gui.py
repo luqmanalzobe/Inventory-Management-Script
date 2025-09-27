@@ -17,7 +17,7 @@ def normalize(s: str) -> str:
     if not s:
         return ""
     s = s.upper()
-    s = re.sub(r"[\\s\\-\\._]", "", s)  # remove spaces/dashes/dots/underscores
+    s = re.sub(r'[\s\-._/\\]', '', s)  # remove spaces, dashes, dots, underscores, slashes
     return s
 
 def find_header_row(ws) -> Optional[int]:
@@ -98,32 +98,54 @@ def write_log(wb, user: str, action: str, part: str, qty_delta=0, from_box="", t
     log = wb[LOG_SHEET]
     log.append([datetime.now().isoformat(timespec="seconds"), user, action, part, qty_delta, from_box, to_box, notes])
 
+def normalize_all(user: str="") -> int:
+    wb, header_row, col_map = ensure_workbook()
+    ws = wb[SHEET_NAME]
+    changed = 0
+    for r in range(header_row+1, ws.max_row+1):
+        part = ws.cell(row=r, column=col_map["PART#"]).value
+        if part:
+            canon = normalize(str(part))
+            if str(part) != canon:
+                ws.cell(row=r, column=col_map["PART#"]).value = canon
+                changed += 1
+    if changed:
+        log = wb[LOG_SHEET]
+        log.append([datetime.now().isoformat(timespec="seconds"), user, "NORMALIZE_ALL", "", 0, "", "", f"{changed} items"])
+        wb.save(EXCEL_PATH)
+    return changed
+
+
 # === Inventory Ops (Add/Remove) ===
 def add_mode(part_input: str, qty: int, box: Optional[int], user: str) -> str:
     wb, header_row, col_map = ensure_workbook()
     ws = wb[SHEET_NAME]
     items = load_inventory(ws, header_row, col_map)
+
     target_norm = normalize(part_input)
     match = next((it for it in items if normalize(it["PART#"]) == target_norm), None)
+    canon = normalize(part_input)  # canonical Part# we will STORE
 
     if match:
-        # increment and optionally move box
+        # increment and optionally move box; also overwrite stored Part# to canonical
         new_qty = match["QTY"] + qty
         ws.cell(row=match["row"], column=col_map["QTY"]).value = new_qty
+        ws.cell(row=match["row"], column=col_map["PART#"]).value = canon
         if box is not None:
             ws.cell(row=match["row"], column=col_map["BOX#"]).value = box
-        write_log(wb, user, "ADD/INCR", match["PART#"], qty_delta=qty, to_box=box or match["BOX#"])
+        write_log(wb, user, "ADD/INCR", canon, qty_delta=qty, to_box=box or match["BOX#"])
         wb.save(EXCEL_PATH)
-        return f"Updated {match['PART#']}: {match['QTY']} → {new_qty}  (Box: {box or match['BOX#']})"
+        return f"Updated {canon}: {match['QTY']} → {new_qty}  (Box: {box or match['BOX#']})"
     else:
-        # new line
+        # new row with canonical Part#
         last_row = ws.max_row + 1
-        ws.cell(row=last_row, column=col_map["PART#"]).value = part_input
+        ws.cell(row=last_row, column=col_map["PART#"]).value = canon
         ws.cell(row=last_row, column=col_map["QTY"]).value = qty
         ws.cell(row=last_row, column=col_map["BOX#"]).value = box
-        write_log(wb, user, "ADD_NEW", part_input, qty_delta=qty, to_box=box, notes="created")
+        write_log(wb, user, "ADD_NEW", canon, qty_delta=qty, to_box=box, notes="created")
         wb.save(EXCEL_PATH)
-        return f"Added {part_input}  (qty {qty}, box {box})."
+        return f"Added {canon}  (qty {qty}, box {box})."
+
 
 def remove_mode(part_input: str, qty: int, user: str) -> str:
     wb, header_row, col_map = ensure_workbook()
@@ -195,7 +217,10 @@ class App(tk.Tk):
         btns = ttk.Frame(top)
         btns.grid(row=2, column=0, columnspan=7, sticky="w", pady=(12,0))
         ttk.Button(btns, text="Apply", command=self.on_apply).grid(row=0, column=0, padx=(0,10))
-        ttk.Button(btns, text="Open in Excel", command=self.open_excel).grid(row=0, column=1, padx=(0,10))
+        ttk.Button(btns, text="Normalize All", command=self.on_normalize_all).grid(row=0, column=1, padx=(0,10))
+        ttk.Button(btns, text="Open in Excel", command=self.open_excel).grid(row=0, column=2, padx=(0,10))
+
+
 
         # Status
         status = ttk.Frame(self, padding=(10,0,10,10))
@@ -221,6 +246,7 @@ class App(tk.Tk):
         vsb = ttk.Scrollbar(mid, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
         vsb.pack(side="right", fill="y")
+
 
     def _bind_events(self):
         self.search_var.trace_add("write", lambda *args: self.refresh_table())
@@ -297,6 +323,19 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
+    def on_normalize_all(self):
+        try:
+            changed = normalize_all(self.user_var.get().strip())
+            self.msg_var.set(f"Normalized {changed} item(s).")
+            self.refresh_table()
+            if changed:
+                messagebox.showinfo("Normalization complete", f"Normalized {changed} item(s).")
+        except PermissionError:
+            messagebox.showerror("Locked", "Close the Excel file and try again.")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+
     def open_excel(self):
         # Attempt to open with OS default app
         try:
@@ -310,7 +349,9 @@ class App(tk.Tk):
                 subprocess.run(["xdg-open", str(path)])
         except Exception as e:
             messagebox.showerror("Open failed", str(e))
+     
 
 if __name__ == "__main__":
     app = App()
     app.mainloop()
+
